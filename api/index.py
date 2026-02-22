@@ -1,11 +1,10 @@
 import os
 import pandas as pd
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(redirect_slashes=False)
 
-# Enable CORS for all origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,42 +12,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def load_data():
-    # Vercel's root is usually the base of your GitHub repo
-    # Try looking for it in the root first
-    paths_to_try = [
-        os.path.join(os.getcwd(), "telemetry.csv"),
-        os.path.join(os.path.dirname(__file__), "..", "telemetry.csv"),
-        "telemetry.csv"
-    ]
-    
-    for path in paths_to_try:
-        if os.path.exists(path):
-            return pd.read_csv(path)
-    return None
+# This finds the CSV in your root folder correctly on Vercel
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(BASE_DIR, "..", "telemetry.csv")
 
 @app.post("/api/metrics")
 async def get_metrics(payload: dict):
-    df = load_data()
-    
-    if df is None:
-        return {"error": "telemetry.csv not found in root directory"}
+    # Use the absolute path we created above
+    try:
+        df = pd.read_csv(CSV_PATH)
+    except Exception as e:
+        return {"error": f"CSV not found at {CSV_PATH}. Check GitHub root."}
 
     regions = payload.get("regions", [])
     threshold = payload.get("threshold_ms", 180)
     results = {}
 
     for reg in regions:
-        # Normalize column names to lowercase just in case
-        df.columns = [c.lower() for c in df.columns]
+        # subset the data for the specific region
         subset = df[df['region'] == reg]
-        
         if not subset.empty:
             results[reg] = {
-                "avg_latency": round(subset['latency'].mean(), 2),
-                "p95_latency": round(subset['latency'].quantile(0.95), 2),
-                "avg_uptime": round(subset['uptime'].mean(), 3),
+                "avg_latency": round(float(subset['latency'].mean()), 2),
+                "p95_latency": round(float(subset['latency'].quantile(0.95)), 2),
+                "avg_uptime": round(float(subset['uptime'].mean()), 3),
                 "breaches": int((subset['latency'] > threshold).sum())
             }
-            
     return results
