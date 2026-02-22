@@ -1,16 +1,26 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 
+# redirect_slashes=False prevents 404s if you forget the last "/"
 app = FastAPI(redirect_slashes=False)
 
-# Enable CORS for dashboards
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["POST"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST"],
+    allow_headers=["*"],
+)
+
+# Use absolute path to find the CSV regardless of where the script runs
+CURR_DIR = os.path.dirname(__file__)
+CSV_PATH = os.path.join(CURR_DIR, "..", "telemetry.csv")
 
 @app.post("/api/metrics")
 async def get_metrics(payload: dict):
-    # Load your telemetry bundle (ensure this file is in your GitHub root)
-    df = pd.read_csv("telemetry.csv") 
+    # If this fails, check Vercel Logs for "FileNotFoundError"
+    df = pd.read_csv(CSV_PATH)
     
     regions = payload.get("regions", [])
     threshold = payload.get("threshold_ms", 180)
